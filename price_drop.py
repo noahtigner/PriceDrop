@@ -6,8 +6,7 @@ import pandas as pd
 import re
 from smtplib import SMTP
 import argparse
-import os.path
-from os import path
+from argparse_prompt import PromptParser
 import sqlite3
 from sqlite3 import Error
 import time
@@ -18,7 +17,6 @@ def build_url(asin, condition='all', shipping='all'):
     return url
 
 def notify(row, url, sender, recipient, password):
-    
     server = SMTP('smtp.gmail.com', 587)
     server.ehlo()
     server.starttls()
@@ -42,18 +40,25 @@ def notify(row, url, sender, recipient, password):
 
     server.quit()
 
+def adapt_decimal(d):
+    return str(d)
+
+def convert_decimal(s):
+    return Decimal(s)
+
 def db_create_connection(db_file):
 
     try:
         connection = sqlite3.connect(db_file)
         return connection
     except Error as e:
-        print(repr(e))
+        print('Error: ' + str(e))
         return None
 
 def db_create_table(connection):
     try:
         statement = """ CREATE TABLE IF NOT EXISTS prices (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
                             datetime DATETIME NOT NULL,
                             item TEXT NOT NULL,
                             total DECIMAL(30, 2) NOT NULL,
@@ -62,34 +67,39 @@ def db_create_table(connection):
                     """
         cursor = connection.cursor()
         cursor.execute(statement)
+        connection.commit()
     except Error as e:
-        print(e)
+        print('Error: ' + str(e))
 
 def db_insert_entry(connection, entry):
     try:
         statement = """ INSERT INTO prices (datetime, item, total, seller)
-                        VALUES(?, ?, ?, ?)
+                        VALUES(?, ?, ?, ?);
                     """
         cursor = connection.cursor()
         cursor.execute(statement, entry)
+        connection.commit()
         return cursor.lastrowid
     except Error as e:
-        print(e)
+        print('Error: ' + str(e))
 
 def db_select_item(connection, item):
     try:
-        statement = """ SELECT * FROM prices
-                        WHERE item = ?
+        last_week = (datetime.now() - timedelta(7)).strftime('%Y-%m-%d %H:%M:%S')
+        today = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        statement = """ SELECT AVG(total),  MIN(total)
+                        FROM prices
+                        WHERE item=?
+                        AND  datetime >= ? and datetime <= ?
                     """
         cursor = connection.cursor()
-        cursor.execute(statement, (item,))
-
+        cursor.execute(statement, (item, last_week, today))
         rows = cursor.fetchall()
-        for row in rows:
-            print(row)
-    except Error as e:
-        print(e)
 
+        return (round(Decimal(rows[0][0]), 2), rows[0][1])
+
+    except Error as e:
+        print('Error: ' + str(e))
 
 def scrape(url, email, password):
     response = requests.get(url, headers=headers)
@@ -120,8 +130,6 @@ def scrape(url, email, password):
                                                                                         .replace('United States', 'US') \
                                                                                         .replace('Ships from ', '')
 
-            # seller = listing.find('div', 'olpSellerName').find('a').string.strip()
-
             seller = listing.find('h3', 'olpSellerName').find('a').text.strip()
             seller = re.sub('[^0-9a-zA-Z ]+', '*', seller)
 
@@ -139,23 +147,10 @@ def scrape(url, email, password):
             }
             rows.append(row)
 
-
-            # print('Total: {}, Price: {}, Shipping: {}, Condition: {}, Delivery: {}'.format(price+ship_price, price, ship_price, condition, delivery))
-            # price = float(price.replace('$', ''))
-            # print(price)
-
         df = pd.DataFrame(rows, columns=['Item', 'Total', 'Price', 'Shipping', 'Condition', 'Seller', 'Location', 'Seller Rating'])
         df = df.sort_values(by=['Item', 'Total'], ascending=[1, 1])
-        short_ft = df[['Item', 'Total', 'Condition', 'Seller', 'Location', 'Seller Rating']]
 
-        print('\nBest Current Listings:\n')
-        print(short_ft.head(3))
-        # print(listings[0])
-
-        # if df['Total'][0] < 160:
-        #     notify(df.head(1), url, email, email, password)   # 'rcesuiarnwengbff'
-
-        return df.head(1)
+        return df.head(3)
 
 
 if __name__ == '__main__':
@@ -172,6 +167,13 @@ if __name__ == '__main__':
     shipping = args.shipping
     email = args.email
     password = args.password
+
+    # TODO: if arg is missing, prompt for it
+    # parser = PromptParser()
+    # parser.add_argument('asin', help='Amazon Standard Identification Number', default='B075HRTD2C')
+
+    # args = parser.parse_args()
+    # asin = args.asin
 
     shipping_options = {
         'prime': '&f_primeEligible=true',
@@ -195,31 +197,44 @@ if __name__ == '__main__':
                     Chrome/75.0.3770.100 Safari/537.36'
     }
 
-    
-
     url = build_url(asin, condition=condition, shipping=shipping)
-    # scrape(url, email, password)
+
     start_time = time.time()
+    
+    connection = db_create_connection('records.db')
+    db_create_table(connection)
+    sqlite3.register_adapter(Decimal, adapt_decimal)        # Register the adapter
+    sqlite3.register_converter("decimal", convert_decimal)  # Register the converter
+
+    percentage_lower = Decimal(.05)
+    interval = 60   # 60 minutes
+
     while True:
-        row = scrape(url, email, password)
-        data = row.iloc[0, :].to_dict()
-        # print(data)
+        rows = scrape(url, email, password)
 
+        print('\nBest Current Listings:\n')
+        print(rows.head(3))
+
+        data = rows.iloc[0, :].to_dict()
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')   # 9999-12-31 23:59:59
-        print(now)
+  
+        entry = (now, data['Item'], data['Total'], data['Seller'])
+        db_insert_entry(connection, entry)
 
-        # db_insert_entry(connection, ('2019-07-22', 'test', 100, 'test'))
+        (historical_average, historical_minimum) = db_select_item(connection, data['Item'])
+        print('\nAverage Low Price: {}, Lowest Historical Price: {}, Current Lowest Price: {}\n'.format(str(historical_average), str(historical_minimum), data['Total']))
 
+        # FIXME: better scheduling
+        # dt = datetime.now() # + timedelta(hours=0)
+        # dt = dt.replace(minute=48)
+        # if datetime.now() == dt:
+        #     print("match")
 
+        if (data['Total'] < (Decimal(historical_minimum / 100) - percentage_lower) * 100) or (data['Total'] < (Decimal(historical_average / 100) - percentage_lower) * 100):
+            notify(rows.head(1), url, email, email, password)
 
+        print('-'*64)
 
-        time.sleep(60.0 - ((time.time() - start_time) % 60.0))
+        time.sleep(interval * 60.0 - ((time.time() - start_time) % 60.0)) 
 
-
-    # connection = db_create_connection('records.db')
-    # db_create_table(connection)
-    # db_insert_entry(connection, ('2019-07-22', 'test', 100, 'test'))
-    # db_insert_entry(connection, ('2019-07-12', 'test', 200, 'test'))
-    # db_select_item(connection, 'test')
-    # connection.close()
-
+    connection.close()
