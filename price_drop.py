@@ -11,32 +11,45 @@ import sqlite3
 from sqlite3 import Error
 import time
 from datetime import datetime, timedelta
+from utils.utilities import my_print as print
+from utils.utilities import my_input as input
+from utils.utilities import ProgressBar, CountDown
+import sys
 
 def build_url(asin, condition='all', shipping='all'):
     url = 'https://amazon.com/gp/offer-listing/' + asin + '/ref=' + condition_options[condition] + shipping_options[shipping]
     return url
 
 def notify(row, url, sender, recipient, password):
+
+    # print()
+
+    p2 = ProgressBar(name='Deal Found!', steps=4, width=64, completion='Email Sent to {}'.format(recipient))
+
+    p2.update(step_name='Connecting to Email Server')
     server = SMTP('smtp.gmail.com', 587)
     server.ehlo()
     server.starttls()
     server.ehlo()
 
+    p2.update(step_name='Logging in to Email Server')
     server.login(sender, password)
 
+    p2.update(step_name='Preparing Message')
     subject = 'The price of an item you\'re following fell!'
     data = row.iloc[0, :].to_dict()
     body = """Item: {}\nTotal: {}\nCondition: {}\nSeller: {}\nURL: {}\n\nBe sure to select the option shown above ;)
            """.format(data['Item'], data['Total'], data['Condition'], data['Seller'] + ', ' + data['Location'], url)
     message = f'Subject: {subject}\n\n{body}'
 
+    p2.update(step_name='Sending Notification')
     server.sendmail(
         sender,
         recipient,
         message
     )
 
-    print('\nEmail sent to {}\n'.format(recipient))
+    # print('\nDeal found! Email sent to {}\n'.format(recipient), color='yellow')
 
     server.quit()
 
@@ -52,8 +65,10 @@ def db_create_connection(db_file):
         connection = sqlite3.connect(db_file)
         return connection
     except Error as e:
-        print('Error: ' + str(e))
+        print('Error: ' + str(e), color='red')
         return None
+
+    
 
 def db_create_table(connection):
     try:
@@ -69,7 +84,7 @@ def db_create_table(connection):
         cursor.execute(statement)
         connection.commit()
     except Error as e:
-        print('Error: ' + str(e))
+        print('Error: ' + str(e), color='red')
 
 def db_insert_entry(connection, entry):
     try:
@@ -81,7 +96,7 @@ def db_insert_entry(connection, entry):
         connection.commit()
         return cursor.lastrowid
     except Error as e:
-        print('Error: ' + str(e))
+        print('Error: ' + str(e), color='red')
 
 def db_select_item(connection, item):
     try:
@@ -99,12 +114,12 @@ def db_select_item(connection, item):
         return (round(Decimal(rows[0][0]), 2), rows[0][1])
 
     except Error as e:
-        print('Error: ' + str(e))
+        print('Error: ' + str(e), color='red')
 
 def scrape(url, email, password):
     response = requests.get(url, headers=headers)
     if response.status_code == 403:
-        print("403")
+        print("403", color='red')
     else:
         rows = []
 
@@ -152,28 +167,28 @@ def scrape(url, email, password):
 
         return df.head(3)
 
+# class ArgumentParserError(Exception): pass
+
+# class ThrowingArgumentParser(argparse.ArgumentParser):
+#     def error(self, message):
+#         raise ArgumentParserError(message)
+
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('asin', help='Amazon Standard Identification Number, eg "B075HRTD2C"', default='B075HRTD2C')
-    parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all', default='all')
-    parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all', default='all')
-    parser.add_argument('email', help='Your email address')
-    parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('asin', help='Amazon Standard Identification Number, eg "B075HRTD2C"', default='B075HRTD2C')
+    # parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all', default='all')
+    # parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all', default='all')
+    # parser.add_argument('email', help='Your email address')
+    # parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
     
-    args = parser.parse_args()
-    asin = args.asin
-    condition = args.condition
-    shipping = args.shipping
-    email = args.email
-    password = args.password
-
-    # TODO: if arg is missing, prompt for it
-    # parser = PromptParser()
-    # parser.add_argument('asin', help='Amazon Standard Identification Number', default='B075HRTD2C')
-
     # args = parser.parse_args()
     # asin = args.asin
+    # condition = args.condition
+    # shipping = args.shipping
+    # email = args.email
+    # password = args.password
 
     shipping_options = {
         'prime': '&f_primeEligible=true',
@@ -197,22 +212,94 @@ if __name__ == '__main__':
                     Chrome/75.0.3770.100 Safari/537.36'
     }
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('asin', help='Amazon Standard Identification Number, eg "B075HRTD2C"')
+    parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all')
+    parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all')
+    parser.add_argument('email', help='Your email address')
+    parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
+    
+    # try:
+    #     args = parser.parse_args()
+    #     asin = args.asin
+    # except SystemExit as e:
+    #     # print()
+    #     asin = input('Enter Item\'s ASIN: ', default='B075HRTD2C', color='yellow')
+
+    # try: 
+    #     args = parser.parse_args()
+    #     condition = args.condition
+    # except SystemExit as e:
+    #     condition = input('Enter Condition: ', options=condition_options.keys(), default='all', color='yellow') 
+
+    # TODO: learn how to hide error, then split these up and make util
+    try:
+        args = parser.parse_args()
+        asin = args.asin
+        condition = args.condition
+        shipping = args.shipping
+        email = args.email
+        password = args.password
+        interval = args.minutes
+    except SystemExit as e:
+        print()
+        asin = input('Enter Item\'s ASIN: ', default='B075HRTD2C', color='yellow')
+        condition = input('Enter Condition: ', options=condition_options.keys(), default='all', color='yellow') 
+        shipping = input('Enter Shipping Constraint: ', options=shipping_options.keys(), default='all', color='yellow') 
+        email = input('Enter Email: ', default='noahzanetigner@gmail.com', color='yellow') 
+        password = input('Enter Email Password: ', default='rcesuiarnwengbff', color='yellow') 
+        interval = input('Enter Interval in Minutes: ', default=1, color='yellow') 
+
+
+    
+    # if args.asin is None:
+        # args.asin = input('Enter ASIN: ')
+    # print(asin)
+
+
     url = build_url(asin, condition=condition, shipping=shipping)
 
-    start_time = time.time()
+    # start_time = time.time()
     
-    connection = db_create_connection('records.db')
-    db_create_table(connection)
-    sqlite3.register_adapter(Decimal, adapt_decimal)        # Register the adapter
-    sqlite3.register_converter("decimal", convert_decimal)  # Register the converter
+    # connection = db_create_connection('records.db')
+    # db_create_table(connection)
+    # sqlite3.register_adapter(Decimal, adapt_decimal)        # Register the adapter
+    # sqlite3.register_converter("decimal", convert_decimal)  # Register the converter
 
     percentage_lower = Decimal(.05)
-    interval = 60   # 60 minutes
+    # interval = 60   # 60 minutes
+    recent = 9999999999
+
+    # entry = (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'B075HRTD2C', 190, 'Aventis Systems')
+    # db_insert_entry(connection, entry)
+    # entry = (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'B075HRTD2C', 207, 'Aventis Systems')
+    # db_insert_entry(connection, entry)
 
     while True:
+
+        start_time = time.time()
+
+        # ----------------------------------------------------------------
+    
+        p1 = ProgressBar('Scraping Data', steps=4, width=64, completion='Data Gathered from Amazon.com')
+
+        p1.update(step_name='Connecting to Database')
+        connection = db_create_connection('records.db')
+
+        p1.update(step_name='Accessing Database Tables')
+        db_create_table(connection)
+
+        p1.update(step_name='Registering Adapters')
+        sqlite3.register_adapter(Decimal, adapt_decimal)
+        sqlite3.register_converter("decimal", convert_decimal)
+
+        p1.update(step_name='Gathering Data from Amazon.com')
         rows = scrape(url, email, password)
 
-        print('\nBest Current Listings:\n')
+        # ----------------------------------------------------------------
+
+        print('\nData Gathered {}'.format(datetime.now().strftime('%m-%d-%Y %H:%M')))
+        print('Best Current Listings:\n')
         print(rows.head(3))
 
         data = rows.iloc[0, :].to_dict()
@@ -222,19 +309,23 @@ if __name__ == '__main__':
         db_insert_entry(connection, entry)
 
         (historical_average, historical_minimum) = db_select_item(connection, data['Item'])
-        print('\nAverage Low Price: {}, Lowest Historical Price: {}, Current Lowest Price: {}\n'.format(str(historical_average), str(historical_minimum), data['Total']))
+        print('\nAverage Price on Record: {}, Lowest Price on Record: {}, Current Lowest Price: {}\n'.format(str(historical_average), str(historical_minimum), data['Total']))
 
-        # FIXME: better scheduling
-        # dt = datetime.now() # + timedelta(hours=0)
-        # dt = dt.replace(minute=48)
-        # if datetime.now() == dt:
-        #     print("match")
+        # FIXME: better scheduling        
 
-        if (data['Total'] < (Decimal(historical_minimum / 100) - percentage_lower) * 100) or (data['Total'] < (Decimal(historical_average / 100) - percentage_lower) * 100):
+        # Decisions about what makes a price a good deal are made here
+        if (data['Total'] < (Decimal(historical_minimum / 100) - percentage_lower) * 100) \
+            or ((data['Total'] < (Decimal(historical_average / 100) - percentage_lower) * 100) \
+            and data['Total'] < recent):
+
             notify(rows.head(1), url, email, email, password)
 
-        print('-'*64)
+        # print('-'*64)
 
-        time.sleep(interval * 60.0 - ((time.time() - start_time) % 60.0)) 
+        connection.close()
+        recent = data['Total']
 
-    connection.close()
+        # time.sleep(interval * 60.0 - ((time.time() - start_time) % 60.0)) 
+        CountDown(minutes=interval, message='Restarting in:', completion= '|' + ('-'*64) + '|\n|' + ('-'*64) + '|')
+
+    
