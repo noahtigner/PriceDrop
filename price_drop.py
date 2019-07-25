@@ -5,6 +5,8 @@ import pandas as pd
 import re
 from smtplib import SMTP
 import ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import argparse
 import sqlite3
 from sqlite3 import Error
@@ -30,19 +32,54 @@ def notify(row, url, sender, recipient, password, width=64):
     context = ssl.create_default_context()
 
     p2.update(step_name='Preparing Message')
-    subject = 'The price of an item you\'re following fell!'
+    # subject = 'The price of an item you\'re following fell!'
     data = row.iloc[0, :].to_dict()
-    # body = """Item: {}\nTotal: {}Condition: {}\nSeller: {}\nURL: {}\n\nBe sure to select the option shown above ;)
-    #        """.format(data['Item'], data['Total'], data['Condition'], data['Seller'] + ', ' + data['Location'], url)
-    body = (
-        f"Item: {data['Item']}\n"
-        f"Total: {data['Total']}\n"
-        f"Condition: {data['Condition']}\n"
-        f"Seller: {data['Seller']}, {data['Location']}\n"
-        f"URL: {url}\n"
-        f"\nBe sure to select the option show above :)"
+    # body = (
+    #     "Item: " + str(data['Item']) + "\n"
+    #     "Total: " + str(data['Total']) + "\n"
+    #     "Condition: " + str(data['Condition']) + "\n"
+    #     "Seller: " + str(data['Seller']) + "\n"
+    #     "URL: " + url + "\n"
+    #     "Be sure to select the option shown above ;)"
+    # )
+    # body = (
+    #     f"Item: {data['Item']}" 
+    #     f"Total: {data['Total']}"
+    #     f"Condition: {data['Condition']}" 
+    #     f"Seller: {data['Seller']}, {data['Location']}" 
+    #     f"URL: {url}" 
+    #     f"\nBe sure to select the option show above :)"
+    # )
+
+    message = MIMEMultipart('alternative')
+    message['Subject'] = f'The price of an item you\'re following fell!'
+    message["From"] = sender
+    message['To'] = recipient
+
+    plain_text = (
+        f"Item: {data['Item']}" 
+        f"Total: {data['Total']}"
+        f"Condition: {data['Condition']}" 
+        f"Seller: {data['Seller']}, {data['Location']}" 
+        f"URL: {url}" 
+        f"\nBe sure to select the seller show above :)"
     )
-    message = f'Subject: {subject}\n\n{body}'
+
+    html_text = (
+        f"<html><body><p>"
+        f"<strong>Item: </strong>{data['Item']}"
+        f"<br><strong>Total: </strong>{data['Total']}"
+        f"<br><strong>Condition: </strong>{data['Condition']}" 
+        f"<br><strong>Seller: </strong>{data['Seller']}, {data['Location']}" 
+        f"<br><strong>URL: </strong>{url}" 
+        f"<br><br>Be sure to select the seller show above :)"
+        f"</p></body></html>"
+    )
+
+    message.attach(MIMEText(plain_text, 'plain'))
+    message.attach(MIMEText(html_text, 'html'))
+    
+    # message = f'Subject: {subject}\n\n{body}'
 
     try:
         p2.update(step_name='Connecting to Email Server')
@@ -58,7 +95,7 @@ def notify(row, url, sender, recipient, password, width=64):
         server.sendmail(
             sender,
             recipient,
-            message
+            message.as_string()
         )
     except Exception as e:
         print(e, color='red')
