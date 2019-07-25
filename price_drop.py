@@ -217,63 +217,37 @@ if __name__ == '__main__':
     parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all')
     parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all')
     parser.add_argument('email', help='Your email address')
-    parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
+    # parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
+    parser.add_argument('interval', help='How many minutes there are between iterations')
     
-    # try:
-    #     args = parser.parse_args()
-    #     asin = args.asin
-    # except SystemExit as e:
-    #     # print()
-    #     asin = input('Enter Item\'s ASIN: ', default='B075HRTD2C', color='yellow')
-
-    # try: 
-    #     args = parser.parse_args()
-    #     condition = args.condition
-    # except SystemExit as e:
-    #     condition = input('Enter Condition: ', options=condition_options.keys(), default='all', color='yellow') 
-
     # TODO: learn how to hide error, then split these up and make util
     try:
         args = parser.parse_args()
         asin = args.asin
         condition = args.condition
         shipping = args.shipping
+        # email = args.email
+        # password = args.password
         email = args.email
-        password = args.password
-        interval = args.minutes
+        interval = args.interval
     except SystemExit as e:
         print()
         asin = input('Enter Item\'s ASIN: ', default='B075HRTD2C', color='yellow')
         condition = input('Enter Condition: ', options=condition_options.keys(), default='all', color='yellow') 
         shipping = input('Enter Shipping Constraint: ', options=shipping_options.keys(), default='all', color='yellow') 
-        email = input('Enter Email: ', default='noahzanetigner@gmail.com', color='yellow') 
-        password = input('Enter Email Password: ', default='rcesuiarnwengbff', color='yellow') 
-        interval = input('Enter Interval in Minutes: ', default=1, color='yellow') 
-
-
-    
-    # if args.asin is None:
-        # args.asin = input('Enter ASIN: ')
-    # print(asin)
-
+        email = input('Enter Your Email: ', default='noahzanetigner@gmail.com', color='yellow') 
+        # password = input('Enter Email Password: ', default='rcesuiarnwengbff', color='yellow') 
+        interval = float(input('Enter Interval in Minutes: ', default=1, color='yellow'))
+        
+        sender = 'noahzanetigner@gmail.com'
+        password = 'rcesuiarnwengbff'
+        recipient = email
 
     url = build_url(asin, condition=condition, shipping=shipping)
-
-    # start_time = time.time()
-    
-    # connection = db_create_connection('records.db')
-    # db_create_table(connection)
-    # sqlite3.register_adapter(Decimal, adapt_decimal)        # Register the adapter
-    # sqlite3.register_converter("decimal", convert_decimal)  # Register the converter
 
     percentage_lower = Decimal(.05)
     # interval = 60   # 60 minutes
     recent = 9999999999
-
-    # entry = (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'B075HRTD2C', 190, 'Aventis Systems')
-    # db_insert_entry(connection, entry)
-    # entry = (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'B075HRTD2C', 207, 'Aventis Systems')
-    # db_insert_entry(connection, entry)
 
     while True:
 
@@ -311,21 +285,24 @@ if __name__ == '__main__':
         (historical_average, historical_minimum) = db_select_item(connection, data['Item'])
         print('\nAverage Price on Record: {}, Lowest Price on Record: {}, Current Lowest Price: {}\n'.format(str(historical_average), str(historical_minimum), data['Total']))
 
-        # FIXME: better scheduling        
+        # FIXME: better scheduling      
+          
+
 
         # Decisions about what makes a price a good deal are made here
+        # ----------------------------------------------------------------
+
         if (data['Total'] < (Decimal(historical_minimum / 100) - percentage_lower) * 100) \
             or ((data['Total'] < (Decimal(historical_average / 100) - percentage_lower) * 100) \
             and data['Total'] < recent):
 
-            notify(rows.head(1), url, email, email, password)
+            notify(rows.head(1), url, sender=sender, recipient=recipient, password=password)
 
-        # print('-'*64)
 
         connection.close()
         recent = data['Total']
 
         # time.sleep(interval * 60.0 - ((time.time() - start_time) % 60.0)) 
-        CountDown(minutes=interval, message='Restarting in:', completion= '|' + ('-'*64) + '|\n|' + ('-'*64) + '|')
+        CountDown(minutes=interval, message='Restarting in:', completion= (' '*32) + '\n|' + ('-'*64) + '|\n\n|'+ ('-'*64) + '|\n')
 
     
