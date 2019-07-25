@@ -1,12 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
-# from lxml import html
 from decimal import *
 import pandas as pd
 import re
 from smtplib import SMTP
 import argparse
-from argparse_prompt import PromptParser
 import sqlite3
 from sqlite3 import Error
 import time
@@ -20,11 +18,9 @@ def build_url(asin, condition='all', shipping='all'):
     url = 'https://amazon.com/gp/offer-listing/' + asin + '/ref=' + condition_options[condition] + shipping_options[shipping]
     return url
 
-def notify(row, url, sender, recipient, password):
+def notify(row, url, sender, recipient, password, width=64):
 
-    # print()
-
-    p2 = ProgressBar(name='Deal Found!', steps=4, width=64, completion='Email Sent to {}'.format(recipient))
+    p2 = ProgressBar(name='Deal Found!', steps=4, width=width, completion='Email Sent to {}'.format(recipient))
 
     p2.update(step_name='Connecting to Email Server')
     server = SMTP('smtp.gmail.com', 587)
@@ -49,8 +45,6 @@ def notify(row, url, sender, recipient, password):
         message
     )
 
-    # print('\nDeal found! Email sent to {}\n'.format(recipient), color='yellow')
-
     server.quit()
 
 def adapt_decimal(d):
@@ -60,15 +54,12 @@ def convert_decimal(s):
     return Decimal(s)
 
 def db_create_connection(db_file):
-
     try:
         connection = sqlite3.connect(db_file)
         return connection
     except Error as e:
         print('Error: ' + str(e), color='red')
         return None
-
-    
 
 def db_create_table(connection):
     try:
@@ -116,16 +107,21 @@ def db_select_item(connection, item):
     except Error as e:
         print('Error: ' + str(e), color='red')
 
-def scrape(url, email, password):
+def scrape(url, p=None):
+
+    p.update(step_name='Requesting Data from Amazon.com')
     response = requests.get(url, headers=headers)
+
     if response.status_code == 403:
         print("403", color='red')
     else:
         rows = []
 
+        p.update(step_name='Gathering Data')
         soup = BeautifulSoup(response.text, 'lxml')
         listings = soup.find_all("div", 'a-row a-spacing-mini olpOffer', limit=99)
 
+        p.update(step_name='Scraping Listings')
         for listing in listings:
 
             price = listing.find('span', 'a-color-price').string.strip()
@@ -167,28 +163,7 @@ def scrape(url, email, password):
 
         return df.head(3)
 
-# class ArgumentParserError(Exception): pass
-
-# class ThrowingArgumentParser(argparse.ArgumentParser):
-#     def error(self, message):
-#         raise ArgumentParserError(message)
-
-
-
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('asin', help='Amazon Standard Identification Number, eg "B075HRTD2C"', default='B075HRTD2C')
-    # parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all', default='all')
-    # parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all', default='all')
-    # parser.add_argument('email', help='Your email address')
-    # parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
-    
-    # args = parser.parse_args()
-    # asin = args.asin
-    # condition = args.condition
-    # shipping = args.shipping
-    # email = args.email
-    # password = args.password
 
     shipping_options = {
         'prime': '&f_primeEligible=true',
@@ -217,45 +192,45 @@ if __name__ == '__main__':
     parser.add_argument('condition', help='Options: new, used, usedAcceptable, usedGood, usedVeryGood, usedLikeNew, all')
     parser.add_argument('shipping', help='Options: prime, freeShipping, primeOrFree, all')
     parser.add_argument('email', help='Your email address')
-    # parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
+    parser.add_argument('password', help='Your email password. See https://myaccount.google.com/apppasswords')
     parser.add_argument('interval', help='How many minutes there are between iterations')
+
+    # TODO: better decision making
+    # TODO: handle and track multiple items
     
-    # TODO: learn how to hide error, then split these up and make util
+    # hide this error, then split these up and make util
     try:
         args = parser.parse_args()
         asin = args.asin
         condition = args.condition
         shipping = args.shipping
-        # email = args.email
-        # password = args.password
-        email = args.email
-        interval = args.interval
+        recipient = args.email
+        interval = float(args.interval)
     except SystemExit as e:
         print()
         asin = input('Enter Item\'s ASIN: ', default='B075HRTD2C', color='yellow')
         condition = input('Enter Condition: ', options=condition_options.keys(), default='all', color='yellow') 
         shipping = input('Enter Shipping Constraint: ', options=shipping_options.keys(), default='all', color='yellow') 
-        email = input('Enter Your Email: ', default='noahzanetigner@gmail.com', color='yellow') 
-        # password = input('Enter Email Password: ', default='rcesuiarnwengbff', color='yellow') 
-        interval = float(input('Enter Interval in Minutes: ', default=1, color='yellow'))
+        recipient = input('Enter Your Email: ', default='noahzanetigner@gmail.com', color='yellow') 
+        interval = float(input('Enter Interval in Minutes: ', default=60, color='yellow'))
         
-        sender = 'noahzanetigner@gmail.com'
-        password = 'rcesuiarnwengbff'
-        recipient = email
+    sender = 'pricedroppy@gmail.com'
+    password = 'aobwarerhxszoswb'
 
     url = build_url(asin, condition=condition, shipping=shipping)
 
     percentage_lower = Decimal(.05)
-    # interval = 60   # 60 minutes
     recent = 9999999999
+    width = 40
 
     while True:
 
         start_time = time.time()
 
+        # Begin Scraping
         # ----------------------------------------------------------------
     
-        p1 = ProgressBar('Scraping Data', steps=4, width=64, completion='Data Gathered from Amazon.com')
+        p1 = ProgressBar('Scraping Data', steps=8, width=width, completion='Data Gathered, Stored, and Compared')
 
         p1.update(step_name='Connecting to Database')
         connection = db_create_connection('records.db')
@@ -267,28 +242,30 @@ if __name__ == '__main__':
         sqlite3.register_adapter(Decimal, adapt_decimal)
         sqlite3.register_converter("decimal", convert_decimal)
 
-        p1.update(step_name='Gathering Data from Amazon.com')
-        rows = scrape(url, email, password)
+        rows = scrape(url, p1)
 
+        # Parse Data, Upload to DB, Query DB
+        # ----------------------------------------------------------------
+
+        data = rows.iloc[0, :].to_dict()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')   # 9999-12-31 23:59:59
+  
+        p1.update(step_name='Inserting New Data into Database')
+        entry = (now, data['Item'], data['Total'], data['Seller'])
+        db_insert_entry(connection, entry)
+
+        p1.update(step_name='Comparing to Database Records')
+        (historical_average, historical_minimum) = db_select_item(connection, data['Item'])
+
+        # Print Data
         # ----------------------------------------------------------------
 
         print('\nData Gathered {}'.format(datetime.now().strftime('%m-%d-%Y %H:%M')))
         print('Best Current Listings:\n')
         print(rows.head(3))
 
-        data = rows.iloc[0, :].to_dict()
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')   # 9999-12-31 23:59:59
-  
-        entry = (now, data['Item'], data['Total'], data['Seller'])
-        db_insert_entry(connection, entry)
-
-        (historical_average, historical_minimum) = db_select_item(connection, data['Item'])
         print('\nAverage Price on Record: {}, Lowest Price on Record: {}, Current Lowest Price: {}\n'.format(str(historical_average), str(historical_minimum), data['Total']))
-
-        # FIXME: better scheduling      
           
-
-
         # Decisions about what makes a price a good deal are made here
         # ----------------------------------------------------------------
 
@@ -296,13 +273,14 @@ if __name__ == '__main__':
             or ((data['Total'] < (Decimal(historical_average / 100) - percentage_lower) * 100) \
             and data['Total'] < recent):
 
-            notify(rows.head(1), url, sender=sender, recipient=recipient, password=password)
+            notify(rows.head(1), url, sender=sender, recipient=recipient, password=password, width=width)
 
+
+        # Clean Things Up, Repeat After Interval
+        # ----------------------------------------------------------------
 
         connection.close()
         recent = data['Total']
 
-        # time.sleep(interval * 60.0 - ((time.time() - start_time) % 60.0)) 
-        CountDown(minutes=interval, message='Restarting in:', completion= (' '*32) + '\n|' + ('-'*64) + '|\n\n|'+ ('-'*64) + '|\n')
-
+        CountDown(minutes=interval, message='Restarting in:', completion=(' '*32) + '\n')#, completion= (' '*32) + '\n|' + ('='*64) + '|\n\n|'+ ('='*64) + '|\n')
     
