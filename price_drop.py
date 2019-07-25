@@ -4,6 +4,7 @@ from decimal import *
 import pandas as pd
 import re
 from smtplib import SMTP
+import ssl
 import argparse
 import sqlite3
 from sqlite3 import Error
@@ -20,32 +21,49 @@ def build_url(asin, condition='all', shipping='all'):
 
 def notify(row, url, sender, recipient, password, width=64):
 
-    p2 = ProgressBar(name='Deal Found!', steps=4, width=width, completion='Email Sent to {}'.format(recipient))
+    p2 = ProgressBar(name='Deal Found!', steps=5, width=width, completion='Email Sent to {}'.format(recipient))
 
-    p2.update(step_name='Connecting to Email Server')
-    server = SMTP('smtp.gmail.com', 587)
-    server.ehlo()
-    server.starttls()
-    server.ehlo()
+    smtp_server = 'smtp.gmail.com'
+    port = 587
 
-    p2.update(step_name='Logging in to Email Server')
-    server.login(sender, password)
+    p2.update(step_name='Creating Secure SSL Connection')
+    context = ssl.create_default_context()
 
     p2.update(step_name='Preparing Message')
     subject = 'The price of an item you\'re following fell!'
     data = row.iloc[0, :].to_dict()
-    body = """Item: {}\nTotal: {}\nCondition: {}\nSeller: {}\nURL: {}\n\nBe sure to select the option shown above ;)
-           """.format(data['Item'], data['Total'], data['Condition'], data['Seller'] + ', ' + data['Location'], url)
+    # body = """Item: {}\nTotal: {}Condition: {}\nSeller: {}\nURL: {}\n\nBe sure to select the option shown above ;)
+    #        """.format(data['Item'], data['Total'], data['Condition'], data['Seller'] + ', ' + data['Location'], url)
+    body = (
+        f"Item: {data['Item']}\n"
+        f"Total: {data['Total']}\n"
+        f"Condition: {data['Condition']}\n"
+        f"Seller: {data['Seller']}, {data['Location']}\n"
+        f"URL: {url}\n"
+        f"\nBe sure to select the option show above :)"
+    )
     message = f'Subject: {subject}\n\n{body}'
 
-    p2.update(step_name='Sending Notification')
-    server.sendmail(
-        sender,
-        recipient,
-        message
-    )
+    try:
+        p2.update(step_name='Connecting to Email Server')
+        server = SMTP(smtp_server, port)
+        server.ehlo()
+        server.starttls(context=context)
+        server.ehlo()
 
-    server.quit()
+        p2.update(step_name='Logging in to Server')
+        server.login(sender, password)
+
+        p2.update(step_name='Sending Notification')
+        server.sendmail(
+            sender,
+            recipient,
+            message
+        )
+    except Exception as e:
+        print(e, color='red')
+    finally:
+        server.quit()
 
 def adapt_decimal(d):
     return str(d)
