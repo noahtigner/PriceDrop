@@ -32,24 +32,7 @@ def notify(row, url, sender, recipient, password, width=64):
     context = ssl.create_default_context()
 
     p2.update(step_name='Preparing Message')
-    # subject = 'The price of an item you\'re following fell!'
     data = row.iloc[0, :].to_dict()
-    # body = (
-    #     "Item: " + str(data['Item']) + "\n"
-    #     "Total: " + str(data['Total']) + "\n"
-    #     "Condition: " + str(data['Condition']) + "\n"
-    #     "Seller: " + str(data['Seller']) + "\n"
-    #     "URL: " + url + "\n"
-    #     "Be sure to select the option shown above ;)"
-    # )
-    # body = (
-    #     f"Item: {data['Item']}" 
-    #     f"Total: {data['Total']}"
-    #     f"Condition: {data['Condition']}" 
-    #     f"Seller: {data['Seller']}, {data['Location']}" 
-    #     f"URL: {url}" 
-    #     f"\nBe sure to select the option show above :)"
-    # )
 
     message = MIMEMultipart('alternative')
     message['Subject'] = f'The price of an item you\'re following fell!'
@@ -78,8 +61,6 @@ def notify(row, url, sender, recipient, password, width=64):
 
     message.attach(MIMEText(plain_text, 'plain'))
     message.attach(MIMEText(html_text, 'html'))
-    
-    # message = f'Subject: {subject}\n\n{body}'
 
     try:
         p2.update(step_name='Connecting to Email Server')
@@ -253,7 +234,7 @@ if __name__ == '__main__':
     # TODO: better decision making
     # TODO: handle and track multiple items
     
-    # hide this error, then split these up and make util
+    # TODO: hide this error, then split these up and make util
     try:
         args = parser.parse_args()
         asin = args.asin
