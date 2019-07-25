@@ -66,6 +66,9 @@ def my_input(prompt, default=None, options=None, color='green', dcolor='green', 
     
     return input('' + FOREGROUND[color] + str(prompt) + options + dflt + STYLES['reset']) or default
 
+def clear_screen():
+    print(chr(27) + '[2J')
+
 class ProgressBar:
     """
     A Progress Bar that is dependant on the progress of a function or process.
@@ -128,7 +131,7 @@ def test_progBar():
     p.update('Sending Email')
 
 class CountDown:
-    def __init__(self, seconds=0, minutes=0, hours=0, show_milli=False, message='', completion=None, color='yellow', ccolor='green'):
+    def __init__(self, seconds=0, minutes=0, hours=0, show_milli=False, message='', completion='None', color='yellow', ccolor='green'):
         self.seconds = seconds
         self.minutes = minutes
         self.hours = hours
